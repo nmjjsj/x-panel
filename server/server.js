@@ -7,7 +7,7 @@ const io = require('socket.io')(http, {
   }
 })
 const { exec } = require('child_process')
-const { join, extname } = require('path')
+const { join } = require('path')
 const osu = require('node-os-utils')
 const fs = require('fs')
 const log4js = require('log4js')
@@ -27,17 +27,24 @@ app.get('/', (req, res) =>
   res.sendFile(join(__dirname + '/../client/public/pages/interface.html'))
 )
 
-//Emit OS stats to each client
+let drive
+;(async () => {
+  drive = await osu.drive.info()
+})()
 setInterval(async () => {
-  //logger.debug(await osu.netstat.inOut())
+  drive = await osu.drive.info()
+}, 1000 * 60)
+
+//Send OS stats to each connected client
+setInterval(async () => {
   const cpuUsage = await osu.cpu.usage()
   const upTime = await osu.os.uptime()
   const memory = await osu.mem.info()
-  io.emit('os-info', { cpuUsage, upTime, memory })
+  io.emit('os-info', { cpuUsage, upTime, memory, drive })
 }, 1000)
 
 // Incomming Sockets
-io.on('connection', socket => {
+io.on('connection', async socket => {
   let currDir = '/'
 
   socket.on('disconnect', () => {
@@ -47,6 +54,24 @@ io.on('connection', socket => {
 
   socket.on('ping', () => socket.emit('pong'))
 
+  socket.on('shutdown', pw => {
+    if (pw !== password)
+      return logger.error(`Shutdown failed: Wrong Password ${pw}`)
+    exec('halt', (err, stdout, stderr) => {
+      logger.warn('Shutting down...')
+      if (err) return console.log(err)
+    })
+  })
+  socket.on('reboot', pw => {
+    if (pw !== password)
+      return logger.error(`Reboot failed: Wrong Password ${pw}`)
+    exec('sudo reboot', (err, stdout, stderr) => {
+      logger.warn('Rebooting...')
+      if (err) return console.log(err)
+    })
+  })
+
+  // File Manager
   socket.on('read-dir', async folder => {
     if (!folder) return socket.emit('dir-items', await readDir(currDir))
     const newDir = currDir.endsWith('/')
@@ -73,25 +98,8 @@ io.on('connection', socket => {
       `${currDir}/${fileName}`,
       join(__dirname + `/../client/public/download/${fileName}`)
     )
-    logger.debug('Successfully copied file:' + fileName)
+    logger.debug('Copied file:' + fileName)
     socket.emit('download-start', `/download/${fileName}`)
-  })
-
-  socket.on('turn-off', pw => {
-    if (pw !== password)
-      return logger.error(`Shutdown failed: Wrong Password ${pw}`)
-    exec('halt', (err, stdout, stderr) => {
-      logger.warn('Shutting off...')
-      if (err) return console.log(err)
-    })
-  })
-  socket.on('reboot', pw => {
-    if (pw !== password)
-      return logger.error(`Reboot failed: Wrong Password ${pw}`)
-    exec('reboot', (err, stdout, stderr) => {
-      logger.warn('Rebooting...')
-      if (err) return console.log(err)
-    })
   })
 })
 
@@ -122,7 +130,7 @@ async function readFile(dir) {
   try {
     return await fs.readFileSync(dir, 'utf8')
   } catch (err) {
-    logger.debug(err)
+    logger.error(err)
     return
   }
 }

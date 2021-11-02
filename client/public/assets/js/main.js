@@ -23,18 +23,18 @@ let selectedFile
 let editMode = false
 
 //File Manager Functions
-const toggleEditor = command => {
-  files.style.display = command === 'show' ? 'none' : 'block'
-  $id('file-editor').style.display = command === 'show' ? 'block' : 'none'
-  editMode = command === 'show' ? true : false
+const toggleEditor = cmd => {
+  files.style.display = cmd === 'show' ? 'none' : 'block'
+  $id('file-editor').style.display = cmd === 'show' ? 'block' : 'none'
+  editMode = cmd === 'show' ? true : false
 }
-const toggleMenu = command => {
-  menu.style.display = command === 'show' ? 'block' : 'none'
+const toggleMenu = cmd => {
+  menu.style.display = cmd === 'show' ? 'block' : 'none'
   menuVisible = !menuVisible
 }
 
-const toggleFileSystem = command => {
-  if (command === 'show') {
+const toggleFileSystem = cmd => {
+  if (cmd === 'show') {
     socket.emit('read-dir')
     title.style.margin = '6vh 0'
     $cl('content')[0].style.justifyContent = 'flex-start'
@@ -61,7 +61,7 @@ const setPosition = ({ top, left }) => {
   menu.style.top = `${top}px`
   toggleMenu('show')
 }
-//END
+//END OF FILE MANAGER
 
 //Handler for all Buttons
 const handleBtn = btn => {
@@ -70,16 +70,16 @@ const handleBtn = btn => {
       const logOffPw = window.prompt('Password')
       socket.emit('reboot', logOffPw)
       break
-    case 'turn-off':
-      const turnOffPw = window.prompt('Password')
-      socket.emit('turn-off', turnOffPw)
+    case 'shutdown':
+      const shutdownPw = window.prompt('Password')
+      socket.emit('shutdown', shutdownPw)
       break
     case 'file-system':
       toggleFileSystem('show')
       break
   }
 }
-//END
+//END OF Button Handler
 
 //Button Listener
 $all('button').forEach(btn =>
@@ -114,13 +114,15 @@ menuOption.forEach(opt =>
 // All incomming sockets
 const socket = io()
   .on('os-info', info => {
-    cpuUsage.innerText = `${info.cpuUsage}%`
+    cpuUsage.innerText = `${info.cpuUsage.toFixed(2)}%`
     memoryUsage.innerText = `${(100 - info.memory.freeMemPercentage).toFixed(
       2
     )}%`
-    const minutes = Math.floor(info.upTime / 60)
-    const seconds = (info.upTime - minutes * 60).toFixed(0)
-    upTime.innerText = `${minutes}m ${seconds}s`
+    upTime.innerText = secondsToHms(info.upTime)
+    if (info.drive) {
+      $cl('used-space')[0].style.flex = info.drive.usedPercentage
+      $cl('free-space')[0].style.flex = info.drive.freePercentage
+    }
   })
 
   .on('pong', () => (currPing.innerText = `${Date.now() - pingTime}ms`))
@@ -189,4 +191,11 @@ const socket = io()
     connState.innerText = 'Disconnected'
     status.style.borderColor = '#f47961'
   })
-//END
+//END OF SOCKET LISTENER
+
+function secondsToHms(seconds) {
+  const days = Math.floor(seconds / 86400)
+  const remainderSeconds = seconds % 86400
+  const hms = new Date(remainderSeconds * 1000).toISOString().substring(11, 19)
+  return hms.replace(/^(\d+)/, h => `${Number(h) + days * 24}`.padStart(2, '0'))
+}
